@@ -1,0 +1,13 @@
+[package]
+name = "curve_tracer"
+version = "0.1.0"
+authors = ["Matthew Yu <matthewjkyu@gmail.com>"]
+edition = "2018"
+
+RUST_BACKTRACE = 1
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+plotters = "^0.2.15"
+terminal-menu = "^1.9.7"
