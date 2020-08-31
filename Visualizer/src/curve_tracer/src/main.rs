@@ -1,13 +1,25 @@
-use plotters::prelude::*;
+/// File: main.rs
+/// Author: Matthew Yu
+/// Organization: UT Solar Vehicles Team
+/// Date Created: 8/29/20
+/// Last Modified: 8/31/20
+/// Description: This file runs the main CLI application managing the PV Curve Tracer.
+///     This program is able to send commands to the STM32 Nucleo over USB, recieve data
+///     packets, and visualize PV curves from those packets or from a log file.
+
+mod visualizer;
+use visualizer::*;
+mod parser;
+use parser::*;
 use terminal_menu::*;
 use std::{
     error,
-    path::Path
+    fs::File,
+    io::{self, BufRead, BufReader},
+    path::Path,
+    sync::{Arc, RwLock},
 };
-use std::sync::{
-    Arc, 
-    RwLock
-};
+
 
 type TerminalMenu = Arc<RwLock<TerminalMenuStruct>>;
 // Change the alias to `Box<error::Error>`.
@@ -60,35 +72,41 @@ fn main() -> Result<()> {
             let voltage_end = numeric_value(&submenu_result, "Ending Voltage (mV)");
             let voltage_resolution = numeric_value(&submenu_result, "Resolution (mV)");
 
-            // when complete display results and ask for confirmation
-            println!("Selection:\t{}", selection_result);
-            println!("Selected Parameters:");
-            println!("Start Voltage:\t\t{}", voltage_start);
-            println!("End Voltage:\t\t{}", voltage_end);
-            println!("Voltage Resolution:\t{}", voltage_resolution);
-            println!("Are these parameters correct? (Y/n)");
+            // error check bounds
+            if voltage_start >= voltage_end {
+                println!("Out of bounds error regarding voltage start and end params.");
+                println!("Aborting.");
+            } else {
+                // when complete display results and ask for confirmation
+                println!("Selection:\t{}", selection_result);
+                println!("Selected Parameters:");
+                println!("Start Voltage:\t\t{}", voltage_start);
+                println!("End Voltage:\t\t{}", voltage_end);
+                println!("Voltage Resolution:\t{}", voltage_resolution);
+                println!("Are these parameters correct? (Y/n)");
 
-            let mut response = String::from("");
-            std::io::stdin().read_line(&mut response).unwrap();
-            if response == "Y\n" {
-                // warn about operating procedures
-                print_disclaimer();
-                println!("Please rotate the rotary switch to {} mode labeled on the board.", selection_result);
-                println!("Now, connect the PV to the terminals of the board.");
-                // ask for final okay
-                response = String::from("");
-                println!("Are you ready to begin execution? (Y/abort) ");
+                let mut response = String::from("");
                 std::io::stdin().read_line(&mut response).unwrap();
                 if response == "Y\n" {
-                    println!("Starting execution.");
-                    // TODO: execute and wait for the packets to roll in
-                    // TODO: in the meantime display or wait until last packet to display
-                    // TODO: give option to save
+                    // warn about operating procedures
+                    print_disclaimer();
+                    println!("Please rotate the rotary switch to {} mode labeled on the board.", selection_result);
+                    println!("Now, connect the PV to the terminals of the board.");
+                    // ask for final okay
+                    response = String::from("");
+                    println!("Are you ready to begin execution? (Y/abort) ");
+                    std::io::stdin().read_line(&mut response).unwrap();
+                    if response == "Y\n" {
+                        println!("Starting execution.");
+                        // TODO: execute and wait for the packets to roll in
+                        // TODO: in the meantime display or wait until last packet to display
+                        // TODO: give option to save
+                    } else {
+                        println!("Aborting.");
+                    }
                 } else {
                     println!("Aborting.");
                 }
-            } else {
-                println!("Aborting.");
             }
         }
 
@@ -120,22 +138,46 @@ fn main_menu() -> TerminalMenu {
 fn file_selection_menu() {
     // prompt for file to parse
     let mut file_path = String::from("");
-    while file_path != "exit\n" {
+    while file_path != "exit" {
         // reset file_path variable
         file_path = String::from("");
         println!("Enter a valid file to visualize or type 'exit': ");
         std::io::stdin().read_line(&mut file_path).unwrap();
-
+        // strip newline
+        file_path = file_path[0..file_path.len()-1].to_string();
         // check if valid (exists, has correct header, etc)
-        if file_path != "exit\n" {
+        if file_path != "exit" {
             if Path::new(&file_path).is_file() {
-                println!("Is a file.");
-                // TODO: open and ready the first line looking for a valid header
-                if true {
-                    // TODO: load in the valid file and visualize it with plotters
+                let mut f = BufReader::new(File::open(&file_path).unwrap());
+                let mut buffer = String::new(); 
+                // open and read the first line looking for a valid header
+                f.read_line(&mut buffer).unwrap();
+                if buffer.trim() == return_header() {
+                    println!("Matched the header.");
+                    buffer = String::new();
+                    let packets:Vec<PacketSet> = vec!();
+                    let mut success = false;
+                    // TODO: then read in the rest, building a set of packet objects
+                    while let Ok(result) = f.read_line(&mut buffer) {
+                        if result != 0 {
+                            println!("{}", buffer);
+                            // TODO: load in the valid file and visualize it with plotters
+                            // build valid packet
+                            buffer = String::new();
+                        } else {
+                            println!("EOF.");
+                            success = true;
+                            break;
+                        }
+                    }
 
+                    // successful parsing, gather up the packets and visualize it
+                    if success {
+                        // TODO: visualize packets
+                        visualize_packets(packets);
+                    }
                 } else {
-                    println!("The file has an invalid header. Retry.");
+                    println!("Invalid header {}", buffer.trim());
                 }
             } else {
                 println!("Is not a file. Retry.");
@@ -221,4 +263,8 @@ fn print_disclaimer() {
     println!("| cution of the program, or while the PV is con- |");
     println!("| nected. This will fry the voltage sensor.      |");
     println!("| ---------------------------------------------- |");
+}
+
+fn return_header() -> String {
+    String::from("Curve Tracer Log V0.1.0. Authored by Matthew Yu. This file is property of UTSVT, 2020.")
 }
