@@ -14,12 +14,8 @@ use parser::*;
 use terminal_menu::*;
 use std::{
     error,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::Path,
     sync::{Arc, RwLock},
 };
-
 
 type TerminalMenu = Arc<RwLock<TerminalMenuStruct>>;
 // Change the alias to `Box<error::Error>`.
@@ -145,72 +141,10 @@ fn file_selection_menu() {
         std::io::stdin().read_line(&mut file_path).unwrap();
         // strip newline
         file_path = file_path[0..file_path.len()-1].to_string();
-        // check if valid (exists, has correct header, etc)
-        if file_path != "exit" {
-            if Path::new(&file_path).is_file() {
-                let mut f = BufReader::new(File::open(&file_path).unwrap());
-                let mut buffer = String::new(); 
-                // open and read the first line looking for a valid header
-                f.read_line(&mut buffer).unwrap();
-                if buffer.trim() == return_header() {
-                    println!("Matched the header.");
-                    buffer = String::new();
-                    let mut packet_sets:Vec<PacketSet> = vec!();
-                    let mut success = false;
-                    // then read in the rest, building a set of packet objects
-                    while let Ok(result) = f.read_line(&mut buffer) {
-                        if result != 0 {
-                            match parse_buffer(buffer.trim().to_string()) {
-                                Ok(res) => {
-                                    // assume if one works the other won't
-                                    if let Some(command_packet) = res.0 {
-                                        // check to see if ID already exists
-                                        let mut found = false;
-                                        for packet in &packet_sets {
-                                            if packet.command_packet.packet_id == command_packet.packet_id {
-                                                found = true;
-                                            }
-                                        }
-                                        if !found {
-                                            packet_sets.push(PacketSet {
-                                                command_packet: command_packet,
-                                                data_packets: vec!()
-                                            })
-                                        }
-                                    } else if let Some(data_packet) = res.1 {
-                                        // check to see if there is a packet set with packets
-                                        for packet in &mut packet_sets {
-                                            if packet.command_packet.packet_id == data_packet.packet_id {
-                                                packet.data_packets.push(data_packet);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                },
-                                Err(err) => println!("{}", err)
-                            }
-                            buffer = String::new();
-                        } else {
-                            println!("EOF.");
-                            success = true;
-                            break;
-                        }
-                    }
-
-                    // successful parsing, gather up the packets and visualize it
-                    if success {
-                        println!("Packets parsed.");
-                        // TODO: visualize packets
-                        visualize_packets(packet_sets);
-                    }
-                } else {
-                    println!("Invalid header {}", buffer.trim());
-                }
-            } else {
-                println!("Is not a file. Retry.");
-            }
-        } else {
-            println!("Exiting the file selection menu.");
+        // parse the file into packets and on success, visualize
+        match parse_file(file_path.clone()) {
+            Ok(packets) => visualize_packets(packets),
+            Err(err) => println!("{}", err)
         }
     }
 }
@@ -291,6 +225,3 @@ fn print_disclaimer() {
     println!("| ---------------------------------------------- |");
 }
 
-fn return_header() -> String {
-    String::from("Curve Tracer Log V0.1.0. Authored by Matthew Yu. This file is property of UTSVT, 2020.")
-}

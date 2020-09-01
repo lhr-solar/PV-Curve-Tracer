@@ -6,7 +6,12 @@
 /// Description: This file parses either a file or packet data send via UART and fills a struct.
 ///     This struct is used later for visualization or storage.
 
-use std::error;
+use std::{
+    error,
+    fs::File,
+    io::{BufRead, BufReader},
+    path::Path,
+};
 
 // Change the alias to `Box<error::Error>`.
 type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -16,12 +21,14 @@ pub enum PacketCommand {
     TEST,
 }
 
+#[derive(PartialEq)]
 pub enum PacketType {
     VOLTAGE,
     CURRENT,
     TEMP,
     IRRAD,
 }
+
 
 pub struct CommandPacket {
     pub packet_id: i32,                 // identifier for the packet
@@ -73,7 +80,7 @@ impl DataPacket {
 
 /// parse_buffer attempts to extract a data or command packet from the string.
 /// Packet enum if success, error elsewise.
-pub fn parse_buffer(buffer: String) -> Result<(Option<CommandPacket>, Option<DataPacket>)> {
+fn parse_buffer(buffer: String) -> Result<(Option<CommandPacket>, Option<DataPacket>)> {
     let args = buffer.split(" ");
     let vec: Vec<&str> = args.collect();
     // command packet
@@ -156,4 +163,79 @@ pub fn parse_buffer(buffer: String) -> Result<(Option<CommandPacket>, Option<Dat
     else {
         return Err("Invalid packet type.".into())
     }
+}
+
+pub fn parse_file(file_path: String) -> Result<Vec<PacketSet>> {
+    // check if valid (exists, has correct header, etc)
+    if file_path != "exit" {
+        if Path::new(&file_path).is_file() {
+            let mut f = BufReader::new(File::open(&file_path).unwrap());
+            let mut buffer = String::new(); 
+            // open and read the first line looking for a valid header
+            f.read_line(&mut buffer).unwrap();
+            if buffer.trim() == return_header() {
+                println!("Matched the header.");
+                buffer = String::new();
+                let mut packet_sets:Vec<PacketSet> = vec!();
+                let mut success = false;
+                // then read in the rest, building a set of packet objects
+                while let Ok(result) = f.read_line(&mut buffer) {
+                    if result != 0 {
+                        match parse_buffer(buffer.trim().to_string()) {
+                            Ok(res) => {
+                                // assume if one works the other won't
+                                if let Some(command_packet) = res.0 {
+                                    // check to see if ID already exists
+                                    let mut found = false;
+                                    for packet in &packet_sets {
+                                        if packet.command_packet.packet_id == command_packet.packet_id {
+                                            found = true;
+                                        }
+                                    }
+                                    if !found {
+                                        packet_sets.push(PacketSet {
+                                            command_packet: command_packet,
+                                            data_packets: vec!()
+                                        })
+                                    }
+                                } else if let Some(data_packet) = res.1 {
+                                    // check to see if there is a packet set with packets
+                                    for packet in &mut packet_sets {
+                                        if packet.command_packet.packet_id == data_packet.packet_id {
+                                            packet.data_packets.push(data_packet);
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                            Err(err) => println!("{}", err)
+                        }
+                        buffer = String::new();
+                    } else {
+                        println!("EOF.");
+                        success = true;
+                        break;
+                    }
+                }
+
+                // successful parsing, gather up the packets and return it
+                if success {
+                    println!("Packets parsed.");
+                    return Ok(packet_sets);
+                } else {
+                    return Err("Packets not successfully parsed.".into());
+                }
+            } else {
+                return Err("Invalid header {}".into());
+            }
+        } else {
+            return Err("Is not a file. Retry.".into());
+        }
+    } else {
+        return Err("Exiting the file selection menu.".into());
+    }
+}
+
+fn return_header() -> String {
+    String::from("Curve Tracer Log V0.1.0. Authored by Matthew Yu. This file is property of UTSVT, 2020.")
 }

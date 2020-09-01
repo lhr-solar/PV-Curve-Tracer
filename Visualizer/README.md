@@ -1,5 +1,3 @@
-This visualiser/command application is written in C/C++.
+This visualiser/command application is written in Rust.
 
-Dependencies: 
-GTK
-matplotlib-cpp
+Dependencies are automatically installed from the cargo.toml.
