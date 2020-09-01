@@ -16,6 +16,7 @@ use std::{
 // Change the alias to `Box<error::Error>`.
 type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
+#[derive(PartialEq)]
 pub enum PacketCommand {
     START,
     TEST,
@@ -28,7 +29,6 @@ pub enum PacketType {
     TEMP,
     IRRAD,
 }
-
 
 pub struct CommandPacket {
     pub packet_id: i32,                 // identifier for the packet
