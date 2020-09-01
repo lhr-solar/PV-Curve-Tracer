@@ -3,3 +3,6 @@ This program has the following functionality, as outlined in the design [documen
 - sends arbitrary commands through either a GUI (graphical user interface) or CLI (command line interface) to initiate a testing regime on the PV Curve Tracer board.
 - recieves packet data from the PV Curve Tracer board in a specific format and parses it.
 - visualizes either retrieved packet data or packet data obtained from a file.
+
+An example test regime visualization is provided below. This visualization was generated through the extraction of `test/test_packet.log`. A visualization for the second regime of packets is at `img/2.png`.
+![sample_packet_visualization](img/1.png)
