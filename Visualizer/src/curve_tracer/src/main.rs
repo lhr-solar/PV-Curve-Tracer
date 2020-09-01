@@ -15,7 +15,7 @@ use terminal_menu::*;
 use std::{
     error,
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{BufRead, BufReader},
     path::Path,
     sync::{Arc, RwLock},
 };
@@ -155,14 +155,40 @@ fn file_selection_menu() {
                 if buffer.trim() == return_header() {
                     println!("Matched the header.");
                     buffer = String::new();
-                    let packets:Vec<PacketSet> = vec!();
+                    let mut packet_sets:Vec<PacketSet> = vec!();
                     let mut success = false;
-                    // TODO: then read in the rest, building a set of packet objects
+                    // then read in the rest, building a set of packet objects
                     while let Ok(result) = f.read_line(&mut buffer) {
                         if result != 0 {
-                            println!("{}", buffer);
-                            // TODO: load in the valid file and visualize it with plotters
-                            // build valid packet
+                            match parse_buffer(buffer.trim().to_string()) {
+                                Ok(res) => {
+                                    // assume if one works the other won't
+                                    if let Some(command_packet) = res.0 {
+                                        // check to see if ID already exists
+                                        let mut found = false;
+                                        for packet in &packet_sets {
+                                            if packet.command_packet.packet_id == command_packet.packet_id {
+                                                found = true;
+                                            }
+                                        }
+                                        if !found {
+                                            packet_sets.push(PacketSet {
+                                                command_packet: command_packet,
+                                                data_packets: vec!()
+                                            })
+                                        }
+                                    } else if let Some(data_packet) = res.1 {
+                                        // check to see if there is a packet set with packets
+                                        for packet in &mut packet_sets {
+                                            if packet.command_packet.packet_id == data_packet.packet_id {
+                                                packet.data_packets.push(data_packet);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(err) => println!("{}", err)
+                            }
                             buffer = String::new();
                         } else {
                             println!("EOF.");
@@ -173,8 +199,9 @@ fn file_selection_menu() {
 
                     // successful parsing, gather up the packets and visualize it
                     if success {
+                        println!("Packets parsed.");
                         // TODO: visualize packets
-                        visualize_packets(packets);
+                        visualize_packets(packet_sets);
                     }
                 } else {
                     println!("Invalid header {}", buffer.trim());
@@ -182,7 +209,6 @@ fn file_selection_menu() {
             } else {
                 println!("Is not a file. Retry.");
             }
-            println!("Filepath:\t{}", file_path);
         } else {
             println!("Exiting the file selection menu.");
         }
