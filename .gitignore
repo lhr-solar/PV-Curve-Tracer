@@ -31,4 +31,4 @@
 *.out
 *.app
 
-Visualizer/src/curve_tracer/target/*
+Visualizer/target/*
