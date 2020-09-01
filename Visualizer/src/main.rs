@@ -1,11 +1,11 @@
-/// File: main.rs
-/// Author: Matthew Yu
-/// Organization: UT Solar Vehicles Team
-/// Date Created: 8/29/20
-/// Last Modified: 8/31/20
-/// Description: This file runs the main CLI application managing the PV Curve Tracer.
-///     This program is able to send commands to the STM32 Nucleo over USB, recieve data
-///     packets, and visualize PV curves from those packets or from a log file.
+//! This file runs the main CLI application managing the PV Curve Tracer. This program is able to send commands to the STM32 Nucleo over USB, recieve data packets, and visualize PV curves from those packets or from a log file.
+//! 
+//! # Info
+//! * File: main.rs
+//! * Author: Matthew Yu
+//! * Organization: UT Solar Vehicles Team
+//! * Date Created: 8/29/20
+//! * Last Modified: 9/1/20
 
 mod visualizer;
 use visualizer::*;
@@ -113,6 +113,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// main_menu creates a TerminalMenu object where the user select between visualization of a file or sending a command to the Nucleo then collecting data and visualizing it.
+/// 
+/// # Returns
+/// 
+/// * A TerminalMenu object
 fn main_menu() -> TerminalMenu {
     //create the menu for 1a/b
     let menu_main = menu(vec![
@@ -131,16 +136,22 @@ fn main_menu() -> TerminalMenu {
     menu_main
 }
 
+/// file_selection_menu prompts the user to enter in a valid log file path
+/// and upon successful parsing, saves the visualization in the img/ folder.
 fn file_selection_menu() {
     // prompt for file to parse
-    let mut file_path = String::from("");
-    while file_path != "exit" {
+    loop {
         // reset file_path variable
-        file_path = String::from("");
+        let mut file_path = String::from("");
         println!("Enter a valid file to visualize or type 'exit': ");
         std::io::stdin().read_line(&mut file_path).unwrap();
         // strip newline
         file_path = file_path[0..file_path.len()-1].to_string();
+        // check if the file path is not exit
+        if file_path == "exit" { 
+            println!("Exiting the file selection menu.");
+            break; 
+        }
         // parse the file into packets and on success, visualize
         match parse_file(file_path.clone()) {
             Ok(packets) => visualize_packets(packets),
@@ -149,6 +160,11 @@ fn file_selection_menu() {
     }
 }
 
+/// command_menu creates a Terminal Menu object where the user can select the type of test and test parameters.
+/// 
+/// # Returns
+/// 
+/// * A TerminalMenu object
 fn command_menu() -> TerminalMenu {
     // create a new menu for selecting command and command data
     let menu_command = menu(vec![
@@ -195,6 +211,7 @@ fn command_menu() -> TerminalMenu {
     menu_command
 }
 
+/// print_disclaimer prints a formatted string with operating procedures and safety guidelines.
 fn print_disclaimer() {
     println!("--------------------------------------------------");
     println!("|         IMPORTANT OPERATING PROCEDURES         |");
