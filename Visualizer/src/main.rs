@@ -7,14 +7,18 @@
 //! * Date Created: 8/29/20
 //! * Last Modified: 9/1/20
 
-mod visualizer;
-use visualizer::*;
+mod communication;
+use communication::*;
 mod parser;
 use parser::*;
+mod visualizer;
+use visualizer::*;
 use terminal_menu::*;
 use std::{
     error,
     sync::{Arc, RwLock},
+    thread,
+    time::Duration,
 };
 
 type TerminalMenu = Arc<RwLock<TerminalMenuStruct>>;
@@ -93,9 +97,31 @@ fn main() -> Result<()> {
                     println!("Are you ready to begin execution? (Y/abort) ");
                     std::io::stdin().read_line(&mut response).unwrap();
                     if response == "Y\n" {
-                        println!("Starting execution.");
                         // TODO: execute and wait for the packets to roll in
-                        // TODO: in the meantime display or wait until last packet to display
+                        println!("Starting execution.");
+                        match communication::open_serial_comm() {
+                            Ok(mut port) => {
+                                // TODO: send execution packet
+
+                                // TODO: retrieve responses
+                                for iteration in 1..5 {
+                                    println!("Iteration: {}", iteration.to_string());
+                                    match receive_message(&mut port) {
+                                        // TODO: look for ending packet or parse and update visualization
+                                        Ok(res) => {
+                                            println!("{}", res);
+                                        },
+                                        Err(err) => {
+                                            println!("{}", err);
+                                        }
+                                    }
+                                    thread::sleep(Duration::from_millis(5000));
+                                }
+                            },
+                            Err(err) => {
+                                println!("{}", err)
+                            }
+                        }
                         // TODO: give option to save
                     } else {
                         println!("Aborting.");

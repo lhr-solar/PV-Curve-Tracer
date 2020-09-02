@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 plotters = "^0.2.15"
 terminal-menu = "^1.9.7"
+serialport = "3.2"
+# sudo apt-get install libudev-dev
