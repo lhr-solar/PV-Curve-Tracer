@@ -13,6 +13,7 @@ use std::{
     io::{BufRead, BufReader},
     path::Path,
 };
+use crate::{Port};
 
 // Change the alias to `Box<error::Error>`.
 type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -71,32 +72,56 @@ pub struct PacketSet {
 }
 
 impl CommandPacket {
+    pub fn new(packet_id: i32, packet_command: PacketCommand, packet_params: Vec<f32>) -> CommandPacket {
+        CommandPacket {
+            packet_id: packet_id,
+            packet_command: packet_command,
+            packet_params: packet_params
+        }
+    }
     /// verify_packet makes sure the internals are valid.
     /// returns true if correct.
-    pub fn _verify_packet(&self) -> bool {
+    pub fn verify_packet(&self) -> Result<()> {
         // TODO: this
-        false
+        Ok(())
     }
 
     /// transmit_packet sends a command packet over USB to the board.
     /// returns true if successfully sent.
-    pub fn _transmit_packet(&self) -> bool {
+    pub fn transmit_packet(&self, port: &mut Port) -> Result<()> {
         // TODO: this
-        false
+        Ok(())
     }
 
     /// receive_packet is an unused method.
-    pub fn _receive_packet(&self) -> bool {
-        false
+    pub fn receive_packet(&self, port: &mut Port) -> Result<()> {
+        Ok(())
     }
 }
 
 impl DataPacket {
+    pub fn new(packet_id: i32, packet_subid: i32, packet_type: PacketType, packet_data: f32) -> DataPacket {
+        DataPacket {
+            packet_id,
+            packet_subid,
+            packet_type: packet_type,
+            packet_data
+        }
+    }
+
     /// verify_packet makes sure the internals are valid.
     /// returns true if correct.
-    pub fn _verify_packet(&self) -> bool {
+    pub fn verify_packet(&self) -> Result<()> {
         // TODO: this
-        false
+        Ok(())
+    }
+
+    pub fn transmit_packet(&self, port: &mut Port) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn receive_packet(&self, port: &mut Port) -> Result<()> {
+        Ok(())
     }
 }
 

@@ -14,11 +14,15 @@ use std::{
     path::Path,
     io::Read,
     str,
+    thread,
+    time::Duration,
 };
+
 use serialport::{
     posix::TTYPort,
     SerialPortSettings,
 };
+use crate::{PacketSet, CommandPacket, DataPacket, PacketType};
 
 const MAX_BUF_SIZE:usize = 10000;
 
@@ -74,5 +78,49 @@ pub fn receive_message(port: &mut Port) -> Result<String> {
     match port.port.read(serial_buf.as_mut_slice()) {
         Ok(_res) => Ok(String::from(str::from_utf8(&serial_buf).unwrap())),
         Err(err) => Err(err.into())
+    }
+}
+
+pub fn execute_test(command_packet: CommandPacket) -> Result<PacketSet> {
+    match open_serial_comm() {
+        Ok(mut port) => {
+            // verify that it's correct
+            if let Ok(()) = command_packet.verify_packet() {
+                // send the command
+                if let Ok(()) = command_packet.transmit_packet(&mut port) {
+                    // retrieve responses
+                    let mut packet_set = PacketSet {
+                        command_packet: command_packet,
+                        data_packets: vec!()
+                    };
+                    // TODO: add some fancy progress bar here and loop until last expected packet is found
+
+                    // SAMPLE CODE
+                    for iteration in 1..5 {
+                        println!("Iteration: {}", iteration.to_string());
+                        // create generic packet
+                        let data_packet = DataPacket::new(-1, -1, PacketType::VOLTAGE, -1.0);
+                        // retrieve data
+                        if let Ok(_) = data_packet.receive_packet(&mut port) {
+                            // TODO: look for ending packet or parse for it
+                            if let Ok(_) = data_packet.verify_packet() {
+                                // TODO: do the same manip as in parse_file
+                                packet_set.data_packets.push(data_packet);
+                            }
+                        }
+                        thread::sleep(Duration::from_millis(5000));
+                    }
+                    // return the completed packets
+                    Ok(packet_set)
+                } else {
+                    Err("Bad End".into())
+                }
+            } else {
+                Err("Bad End".into())
+            }
+        },
+        Err(err) => {
+            Err(format!("{}", err).into())
+        }
     }
 }

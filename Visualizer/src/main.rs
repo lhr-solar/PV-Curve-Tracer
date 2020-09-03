@@ -16,9 +16,7 @@ use visualizer::*;
 use terminal_menu::*;
 use std::{
     error,
-    sync::{Arc, RwLock},
-    thread,
-    time::Duration,
+    sync::{Arc, RwLock}
 };
 
 type TerminalMenu = Arc<RwLock<TerminalMenuStruct>>;
@@ -26,6 +24,7 @@ type TerminalMenu = Arc<RwLock<TerminalMenuStruct>>;
 type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
 fn main() -> Result<()> {
+    let packet_id = 0;
     // To start with, we want to do the following things:
     // 1. Ask the user what he/she wants to do:
     //     a. do you want to visualize an existing file? (go to 2a)
@@ -68,9 +67,9 @@ fn main() -> Result<()> {
             } else { // ARRAY
                 submenu_result = get_submenu(&menu_result, "ARRAY Test Parameters");
             }
-            let voltage_start = numeric_value(&submenu_result, "Starting Voltage (mV)");
-            let voltage_end = numeric_value(&submenu_result, "Ending Voltage (mV)");
-            let voltage_resolution = numeric_value(&submenu_result, "Resolution (mV)");
+            let voltage_start = numeric_value(&submenu_result, "Starting Voltage (mV)") as f32;
+            let voltage_end = numeric_value(&submenu_result, "Ending Voltage (mV)") as f32;
+            let voltage_resolution = numeric_value(&submenu_result, "Resolution (mV)") as f32;
 
             // error check bounds
             if voltage_start >= voltage_end {
@@ -97,32 +96,24 @@ fn main() -> Result<()> {
                     println!("Are you ready to begin execution? (Y/abort) ");
                     std::io::stdin().read_line(&mut response).unwrap();
                     if response == "Y\n" {
-                        // TODO: execute and wait for the packets to roll in
+                        // execute and wait for the packets to roll in
                         println!("Starting execution.");
-                        match communication::open_serial_comm() {
-                            Ok(mut port) => {
-                                // TODO: send execution packet
-
-                                // TODO: retrieve responses
-                                for iteration in 1..5 {
-                                    println!("Iteration: {}", iteration.to_string());
-                                    match receive_message(&mut port) {
-                                        // TODO: look for ending packet or parse and update visualization
-                                        Ok(res) => {
-                                            println!("{}", res);
-                                        },
-                                        Err(err) => {
-                                            println!("{}", err);
-                                        }
-                                    }
-                                    thread::sleep(Duration::from_millis(5000));
-                                }
-                            },
-                            Err(err) => {
-                                println!("{}", err)
-                            }
+                        // generate the command packet
+                        let packet_command:PacketCommand;
+                        if selection_result == "TEST" {
+                            packet_command = PacketCommand::TEST;
+                        } else {
+                            packet_command = PacketCommand::START
                         }
-                        // TODO: give option to save
+                        let command = CommandPacket::new(
+                            packet_id,
+                            packet_command,
+                            vec!(voltage_start, voltage_end, voltage_resolution)
+                        );
+                        if let Ok(packet_set) = execute_test(command) {
+                            // TODO: visualize it
+                            // TODO: give option to save
+                        };
                     } else {
                         println!("Aborting.");
                     }
