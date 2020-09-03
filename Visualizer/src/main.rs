@@ -7,12 +7,18 @@
 //! * Date Created: 8/29/20
 //! * Last Modified: 9/1/20
 
+// general communication functions
 mod communication;
 use communication::*;
+// packet struct definitions and methods
 mod parser;
 use parser::*;
+// serial communication methods for packets
+mod port;
+// visualization of packets
 mod visualizer;
 use visualizer::*;
+
 use terminal_menu::*;
 use std::{
     error,
@@ -105,12 +111,11 @@ fn main() -> Result<()> {
                         } else {
                             packet_command = PacketCommand::START
                         }
-                        let command = CommandPacket::new(
+                        if let Ok(_packet_set) = execute_test(CommandPacket::new(
                             packet_id,
                             packet_command,
                             vec!(voltage_start, voltage_end, voltage_resolution)
-                        );
-                        if let Ok(packet_set) = execute_test(command) {
+                        )) {
                             // TODO: visualize it
                             // TODO: give option to save
                         };

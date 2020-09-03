@@ -13,7 +13,9 @@ use std::{
     io::{BufRead, BufReader},
     path::Path,
 };
-use crate::{Port};
+use crate::{
+    port::*
+};
 
 // Change the alias to `Box<error::Error>`.
 type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -79,23 +81,118 @@ impl CommandPacket {
             packet_params: packet_params
         }
     }
+
+    /// parse_packet_string parses and verifies a string and converts it into a CommandPacket if applicable.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `string` - string to parse and verify
+    /// 
+    /// # Returns
+    /// 
+    /// * A CommandPacket on success, an error on failure.
+    pub fn parse_packet_string(string: String) -> Result<CommandPacket> {
+        let args = string.split(" ");
+        let vec: Vec<&str> = args.collect();
+
+        // command packet
+        if vec[0] == "CMD" {
+            if vec.len() > 2 {
+                // TEST command
+                // check for correct parameter types
+                if  !vec[1].parse::<i32>().is_ok() || // packet id
+                    !vec[2].parse::<f32>().is_ok() || // start voltage
+                    !vec[3].parse::<f32>().is_ok() || // end voltage
+                    !vec[4].parse::<f32>().is_ok() {  // resolution
+                    return Err("Invalid packet parameter.".into())
+                }
+                Ok(CommandPacket::new(
+                    vec[1].parse::<i32>().unwrap(), 
+                    PacketCommand::TEST, 
+                    vec!(
+                        vec[2].parse::<f32>().unwrap(),
+                        vec[3].parse::<f32>().unwrap(),
+                        vec[4].parse::<f32>().unwrap()
+                    )
+                ))
+            } else if vec.len() == 2 {
+                // START command
+                // check for correct parameter types
+                if !vec[1].parse::<i32>().is_ok() { // packet id
+                    return Err("Invalid packet parameter.".into())
+                }
+                Ok(CommandPacket::new(
+                    vec[1].parse::<i32>().unwrap(), 
+                    PacketCommand::START, 
+                    vec!()
+                ))
+            } else {
+                return Err("Invalid parameter list length.".into())
+            }
+        } else {
+            Err("Invalid packet type.".into())
+        }
+    }
+
     /// verify_packet makes sure the internals are valid.
-    /// returns true if correct.
+    /// TODO: this function
+    /// 
+    /// # Arguments
+    /// 
+    /// * `self`
+    /// 
+    /// # Returns
+    /// 
+    /// * Nothing on success, an error on failure.
     pub fn verify_packet(&self) -> Result<()> {
         // TODO: this
         Ok(())
     }
 
-    /// transmit_packet sends a command packet over USB to the board.
-    /// returns true if successfully sent.
+    /// transmit_packet sends a command packet stringified over USB to the board.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `self`
+    /// * `port` - port to send message to via serial
+    /// 
+    /// # Returns
+    /// 
+    /// * Nothing on success, an error on failure.
     pub fn transmit_packet(&self, port: &mut Port) -> Result<()> {
+        // convert CommandPacket to string for transmission
         // TODO: this
-        Ok(())
+        let message = String::from("HELLO");
+        // send message
+        match send_message(port, message) {
+            Ok(()) => Ok(()),
+            Err(err) => Err(err.into())
+        }
     }
 
-    /// receive_packet is an unused method.
-    pub fn receive_packet(&self, port: &mut Port) -> Result<()> {
-        Ok(())
+    /// receive_packet grabs a string over USB from the board and converts it into a CommandPacket.
+    /// Unused.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `self`
+    /// * `port` - port to receive message from via serial
+    /// 
+    /// # Returns
+    /// 
+    /// * A CommandPacket on success, an error on failure.
+    pub fn _receive_packet(&self, port: &mut Port) -> Result<CommandPacket> {
+        // receive message
+        match receive_message(port) {
+            Ok(res) => {
+                // Do string parsing and verification before return
+                match CommandPacket::parse_packet_string(res) {
+                    Ok(res) => Ok(res),
+                    Err(err) => Err(err.into())
+                }
+            },
+            Err(err) => Err(err.into())
+        }
     }
 }
 
@@ -109,19 +206,111 @@ impl DataPacket {
         }
     }
 
+    /// parse_packet_string parses and verifies a string and converts it into a DataPacket if applicable.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `string` - string to parse and verify
+    /// 
+    /// # Returns
+    /// 
+    /// * A DataPacket on success, an error on failure.
+    pub fn parse_packet_string(string: String) -> Result<DataPacket> {
+        let args = string.split(" ");
+        let vec: Vec<&str> = args.collect();
+
+        // data packet
+        if vec[0] == "DATA" {
+            // check for correct parameter types
+            if  !vec[1].parse::<i32>().is_ok() ||   // packet id
+                !vec[2].parse::<i32>().is_ok() ||   // subpacket id
+                !vec[3].parse::<i32>().is_ok() ||   // measurement type
+                !vec[4].parse::<f32>().is_ok() {    // measurement value
+                return Err("Invalid packet parameter.".into())
+            }
+            // parse packet measurement type
+            let packet_type;
+            let measurement_type = vec[3].parse::<i32>().unwrap();
+            if measurement_type == 0 {
+                packet_type = PacketType::VOLTAGE;
+            } else if measurement_type == 1 {
+                packet_type = PacketType::CURRENT;
+            } else if measurement_type == 2 {
+                packet_type = PacketType::TEMP;
+            } else if measurement_type == 3 {
+                packet_type = PacketType::IRRAD;
+            } else {
+                return Err("Invalid packet type.".into())
+            }
+            Ok(DataPacket::new(
+                vec[1].parse::<i32>().unwrap(), 
+                vec[2].parse::<i32>().unwrap(), 
+                packet_type, 
+                vec[4].parse::<f32>().unwrap()
+            ))
+        } else {
+            Err("Invalid packet type.".into())
+        }
+    }
+
     /// verify_packet makes sure the internals are valid.
-    /// returns true if correct.
+    /// TODO: this function
+    /// 
+    /// # Arguments
+    /// 
+    /// * `self`
+    /// 
+    /// # Returns
+    /// 
+    /// * Nothing on success, an error on failure.
     pub fn verify_packet(&self) -> Result<()> {
         // TODO: this
         Ok(())
     }
 
-    pub fn transmit_packet(&self, port: &mut Port) -> Result<()> {
-        Ok(())
+    /// transmit_packet sends a data packet stringified over USB to the board.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `self`
+    /// * `port` - port to send message to via serial
+    /// 
+    /// # Returns
+    /// 
+    /// * Nothing on success, an error on failure.
+    pub fn _transmit_packet(&self, port: &mut Port) -> Result<()> {
+        // convert CommandPacket to string for transmission
+        // TODO: this
+        let message = String::from("HELLO");
+        // send message
+        match send_message(port, message) {
+            Ok(()) => Ok(()),
+            Err(err) => Err(err.into())
+        }
     }
 
-    pub fn receive_packet(&self, port: &mut Port) -> Result<()> {
-        Ok(())
+    /// receive_packet grabs a string over USB from the board and converts it into a DataPacket.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `self`
+    /// * `port` - port to receive message from via serial
+    /// 
+    /// # Returns
+    /// 
+    /// * A DataPacket on success, an error on failure.
+    pub fn receive_packet(&self, port: &mut Port) -> Result<DataPacket> {
+        // receive message
+        match receive_message(port) {
+            Ok(res) => {
+                // Do string parsing and verification before return
+                match DataPacket::parse_packet_string(res) {
+                    Ok(res) => Ok(res),
+                    Err(err) => Err(err.into())
+                }
+            },
+            Err(err) => Err(err.into())
+        }
     }
 }
 
@@ -135,87 +324,12 @@ impl DataPacket {
 /// 
 /// * A tuple of packet options on success, an error on failure.
 fn parse_buffer(buffer: String) -> Result<(Option<CommandPacket>, Option<DataPacket>)> {
-    let args = buffer.split(" ");
-    let vec: Vec<&str> = args.collect();
-    // command packet
-    if vec[0] == "CMD" {
-        if vec.len() > 2 {
-            // TEST command
-            // check for correct parameter types
-            if  !vec[1].parse::<i32>().is_ok() || // packet id
-                !vec[2].parse::<f32>().is_ok() || // start voltage
-                !vec[3].parse::<f32>().is_ok() || // end voltage
-                !vec[4].parse::<f32>().is_ok() {  // resolution
-                return Err("Invalid packet parameter.".into())
-            }
-            Ok((
-                Some(CommandPacket {
-                    packet_id: vec[1].parse::<i32>().unwrap(), 
-                    packet_command: PacketCommand::TEST, 
-                    packet_params: vec!(
-                        vec[2].parse::<f32>().unwrap(),
-                        vec[3].parse::<f32>().unwrap(),
-                        vec[4].parse::<f32>().unwrap()
-                    )
-                }), 
-                None
-            ))
-        } else if vec.len() == 2 {
-            // START command
-            // check for correct parameter types
-            if !vec[1].parse::<i32>().is_ok() { // packet id
-                return Err("Invalid packet parameter.".into())
-            }
-            Ok((
-                Some(CommandPacket {
-                    packet_id: vec[1].parse::<i32>().unwrap(), 
-                    packet_command: PacketCommand::START, 
-                    packet_params: vec!()
-                }), 
-                None
-            ))
-        } else {
-            return Err("Invalid parameter list length.".into())
-        }
-    }
-
-    // data packet
-    else if vec[0] == "DATA" {
-        // check for correct parameter types
-        if  !vec[1].parse::<i32>().is_ok() ||   // packet id
-            !vec[2].parse::<i32>().is_ok() ||   // subpacket id
-            !vec[3].parse::<i32>().is_ok() ||   // measurement type
-            !vec[4].parse::<f32>().is_ok() {    // measurement value
-            return Err("Invalid packet parameter.".into())
-        }
-        // parse packet measurement type
-        let packet_type;
-        let measurement_type = vec[3].parse::<i32>().unwrap();
-        if measurement_type == 0 {
-            packet_type = PacketType::VOLTAGE;
-        } else if measurement_type == 1 {
-            packet_type = PacketType::CURRENT;
-        } else if measurement_type == 2 {
-            packet_type = PacketType::TEMP;
-        } else if measurement_type == 3 {
-            packet_type = PacketType::IRRAD;
-        } else {
-            return Err("Invalid packet type.".into())
-        }
-
-        Ok((
-            None, 
-            Some(DataPacket {
-                packet_id: vec[1].parse::<i32>().unwrap(),
-                packet_subid: vec[2].parse::<i32>().unwrap(),
-                packet_type: packet_type,
-                packet_data: vec[4].parse::<f32>().unwrap()
-            })
-        ))
-    }
-    // something else - TODO: maybe ignore comments
-    else {
-        return Err("Invalid packet type.".into())
+    if let Ok(data_packet) = DataPacket::parse_packet_string(buffer.clone()) {
+        Ok((None, Some(data_packet)))
+    } else if let Ok(command_packet) = CommandPacket::parse_packet_string(buffer) {
+        Ok((Some(command_packet), None))
+    } else {
+        Err("Neither packet type was found.".into())
     }
 }
 
