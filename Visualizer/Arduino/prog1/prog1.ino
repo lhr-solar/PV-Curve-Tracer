@@ -8,7 +8,7 @@ void receive_data(char* buffer);
 void send_data(char* buffer);
 bool is_buffer_full(int buff_ptr_R, int buff_ptr_W);
 bool is_buffer_empty(int buff_ptr_R, int buff_ptr_W);
-bool read_command(char* buffer, String* command);
+bool read_command(char* buffer, char* command, int buff_ptr_R, int buff_ptr_W);
 
 // globals and constants
 const int BUFFER_SIZE = 100;
@@ -26,17 +26,23 @@ void setup() {
 
 // main program loop
 void loop() {
+  static int frame = 0;
   // look for updates from the buffer
   receive_data(buffer);
 
+  printf("%i:\t%s", frame, buffer);
+
   // attempt to transcribe any data in the buffer
-  String command = "";
-  if (read_command(buffer, &command)) {
+  char command[BUFFER_SIZE];
+  if (read_command(buffer, command, buff_ptr_R, buff_ptr_W)) {
+    printf("Command:\t%s", command);
     // parse the command if we got something valid
     // if valid parse, execute
     // run a second thread/pseudothread here
     execute_command();
   }
+
+  frame++;
 }
 
 // some command param in here
@@ -113,9 +119,38 @@ bool is_buffer_empty(int buff_ptr_R, int buff_ptr_W) {
  * Args:
  *  char* buffer - reference to the buffer to read
  *  String* command - pointer to the command string to retrieve, if possible.
+ *  int buff_ptr_R - read pointer of the buffer
+ *  int buff_ptr_W - write pointer of the buffer
  * Return:
  *  boolean true if a command has been extracted, false elsewise
  */
-bool read_command(char* buffer, String* command) {
-  return false;
+bool read_command(char* buffer, char* command, int buff_ptr_R, int buff_ptr_W) {
+  // start with the read pointer, look for a byte with the value 46 ('.').
+  bool found = false;
+  int total = 0;
+  int i = buff_ptr_R;
+  while (!is_buffer_empty(i, buff_ptr_W)) {
+    if (buffer[i] == 46) {
+      found = true;
+      break;
+    }
+    i = (i+1)%BUFFER_SIZE;
+    total++;
+  }
+
+  // when we find it, fill up the command string pointer
+  if (found) {
+    int idx = buff_ptr_R;
+    for (int i = 0; i < total; i++) {
+      command[i] = buffer[idx];
+      idx = (idx + 1)%BUFFER_SIZE;
+    }
+    // append null
+    command[total] = '\0';
+    
+    // update the read pointer
+    buff_ptr_R = i;
+  }
+
+  return found;
 }
