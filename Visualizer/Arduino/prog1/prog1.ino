@@ -8,7 +8,8 @@ void receive_data(char* buffer);
 void send_data(char* buffer);
 bool is_buffer_full(int buff_ptr_R, int buff_ptr_W);
 bool is_buffer_empty(int buff_ptr_R, int buff_ptr_W);
-bool read_command(char* buffer, char* command, int buff_ptr_R, int buff_ptr_W);
+bool read_command(char* buffer, char* command);
+
 
 // globals and constants
 const int BUFFER_SIZE = 100;
@@ -22,24 +23,36 @@ bool start_flag = false;
 void setup() {
    Serial.begin(9600);
    while (!Serial); // wait for serial port to connect. Needed for native USB
+   Serial.println("[ARDUINO] Starting up.");
+   delay(10000);
 }
 
 // main program loop
 void loop() {
+  delay(5000);
+  
   static int frame = 0;
   // look for updates from the buffer
   receive_data(buffer);
 
-  printf("%i:\t%s", frame, buffer);
+  // serial debugging
+//  char buff[BUFFER_SIZE];
+//  sprintf (buff, "[ARDUINO] Iteration %i| WPTR %i| RPTR %i| Received %s", frame, buff_ptr_W, buff_ptr_R, buffer);
+//  Serial.println(buff);
 
   // attempt to transcribe any data in the buffer
   char command[BUFFER_SIZE];
-  if (read_command(buffer, command, buff_ptr_R, buff_ptr_W)) {
-    printf("Command:\t%s", command);
+  if (read_command(buffer, command)) {
+    
+//    sprintf (buff, "[ARDUINO] Command: %s", command);
+//    Serial.println(buff);
+
     // parse the command if we got something valid
     // if valid parse, execute
     // run a second thread/pseudothread here
     execute_command();
+    // clear command
+    memset(command, 0, sizeof(command));
   }
 
   frame++;
@@ -74,7 +87,11 @@ void receive_data(char* buffer) {
   // while we can read data and can still update the buffer
   while(Serial.available() > 0 && !is_buffer_full(buff_ptr_R, buff_ptr_W)) {
     // read in the byte into the buffer and move to the next spot
-    buffer[buff_ptr_W] = (char) Serial.read();
+    int val = Serial.read();
+    // ignore string endings
+    if (val != '\0') {
+      buffer[buff_ptr_W] = (char) val;      
+    }
     buff_ptr_W = (buff_ptr_W+1)%BUFFER_SIZE;
   }
 }
@@ -85,7 +102,7 @@ void receive_data(char* buffer) {
  *  String buffer - string to send over serial.
  */
 void send_data(String buffer) {
-   Serial.print(buffer);
+   Serial.println(buffer);
 }
 
 /**
@@ -119,22 +136,22 @@ bool is_buffer_empty(int buff_ptr_R, int buff_ptr_W) {
  * Args:
  *  char* buffer - reference to the buffer to read
  *  String* command - pointer to the command string to retrieve, if possible.
- *  int buff_ptr_R - read pointer of the buffer
- *  int buff_ptr_W - write pointer of the buffer
  * Return:
  *  boolean true if a command has been extracted, false elsewise
  */
-bool read_command(char* buffer, char* command, int buff_ptr_R, int buff_ptr_W) {
+bool read_command(char* buffer, char* command) {
   // start with the read pointer, look for a byte with the value 46 ('.').
   bool found = false;
   int total = 0;
-  int i = buff_ptr_R;
-  while (!is_buffer_empty(i, buff_ptr_W)) {
-    if (buffer[i] == 46) {
+  int curr_idx = buff_ptr_R;
+
+  //
+  while (!is_buffer_empty(curr_idx, buff_ptr_W) && !found) {
+    if (buffer[curr_idx] == '.') {
+//      Serial.println("Found a command.");
       found = true;
-      break;
     }
-    i = (i+1)%BUFFER_SIZE;
+    curr_idx = (curr_idx+1)%BUFFER_SIZE;
     total++;
   }
 
@@ -149,7 +166,7 @@ bool read_command(char* buffer, char* command, int buff_ptr_R, int buff_ptr_W) {
     command[total] = '\0';
     
     // update the read pointer
-    buff_ptr_R = i;
+    buff_ptr_R = curr_idx;
   }
 
   return found;
