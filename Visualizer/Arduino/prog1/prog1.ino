@@ -1,9 +1,10 @@
 /**
  * This program is used to emulate the STM32 Nucleo on an Arduino UNO. For purposes of testing the Visualizer and Command application.
+ * If you get the flash error: "can't open device "/dev/tty/ACM0": Permission denied", run the following command: `sudo chmod a+rw /dev/ttyACM0`.
  */
 #include <Arduino.h>
 // function signatures
-void execute_command();
+void execute_command(char* command);
 void receive_data(char* buffer);
 void send_data(char* buffer);
 bool is_buffer_full(int buff_ptr_R, int buff_ptr_W);
@@ -24,58 +25,80 @@ void setup() {
    Serial.begin(9600);
    while (!Serial); // wait for serial port to connect. Needed for native USB
    Serial.println("[ARDUINO] Starting up.");
-   delay(10000);
+   delay(5000);
 }
 
 // main program loop
 void loop() {
-  delay(5000);
-  
-  static int frame = 0;
   // look for updates from the buffer
   receive_data(buffer);
 
-  // serial debugging
-//  char buff[BUFFER_SIZE];
-//  sprintf (buff, "[ARDUINO] Iteration %i| WPTR %i| RPTR %i| Received %s", frame, buff_ptr_W, buff_ptr_R, buffer);
-//  Serial.println(buff);
+
+  delay(5000);
+  static int frame = 0;
+  // these println are for serial debugging. remove after testing.
+  char buff[BUFFER_SIZE];
+  sprintf (buff, "[ARDUINO] Iteration %i| WPTR %i| RPTR %i| Received %s", frame, buff_ptr_W, buff_ptr_R, buffer);
+  Serial.println(buff);
+  frame++;
+
 
   // attempt to transcribe any data in the buffer
   char command[BUFFER_SIZE];
   if (read_command(buffer, command)) {
-    
-//    sprintf (buff, "[ARDUINO] Command: %s", command);
-//    Serial.println(buff);
+    sprintf (buff, "[ARDUINO] Command: %s", command);
+    Serial.println(buff);
 
-    // parse the command if we got something valid
-    // if valid parse, execute
-    // run a second thread/pseudothread here
-    execute_command();
+    // parse and execute the command if we got something valid
+    execute_command(command);
     // clear command
     memset(command, 0, sizeof(command));
   }
-
-  frame++;
 }
 
 // some command param in here
 /**
  * execute_command attempts to run an execution regime and send it back via serial. Potentially Non blocking.
+ *  char* buffer - reference to the command to execute.
  */
-void execute_command() {
+void execute_command(char* command) {
+  char start_command[] = "CMD 0";
+  char test_command[] = "CMD 1";
+  bool found = true;
   // if START command, set the flag
-
-  // if TEST command and START flag hasn't been set, ignore.
-  // else do some execution
-    // send fake data
-    String fake_data[] = {
-      "Hello World",
-      "This is a test"
-    };
-    
-    for(int i = 0; i < sizeof(fake_data)/sizeof(fake_data[0]); i++) {
-      send_data(fake_data[i]);
+  for (int i = 0; i < sizeof(start_command)-1; i++) { // -1 to ignore the '\0'
+    if (start_command[i]!= command[i]) {
+      found = false;
+      break;
     }
+  }
+  if (found) {
+    Serial.println("[ARDUINO] Start command has been found. Setting the flag.");
+    start_flag = true;
+    return;
+  }
+
+  found = true;
+  // if TEST command and START flag hasn't been set, ignore.
+  for (int i = 0; i < sizeof(test_command)-1; i++) { // -1 to ignore the '\0'
+    if (test_command[i]!= command[i]) {
+      found = false;
+      break;
+    }
+  }
+  if (found) {
+    Serial.println("[ARDUINO] Test command has been found. Checking for start flag.");
+    if (start_flag){
+      Serial.println("[ARDUINO] Parsing the rest of the TEST command.");
+      // TODO: look for the following: ID START_VOLTAGE END_VOLTAGE VOLTAGE_RES
+      // TODO: when found, initiate test regime and print back data.
+    } else {
+      Serial.println("[ARDUINO] Tried to run a TEST command without calling Start. Ignoring...");
+    }
+    return;
+  } 
+
+  Serial.println("[ARDUINO] Not a valid command.");
 }
 
 /**
@@ -145,17 +168,16 @@ bool read_command(char* buffer, char* command) {
   int total = 0;
   int curr_idx = buff_ptr_R;
 
-  //
+  // read until we can't or when we found a command
   while (!is_buffer_empty(curr_idx, buff_ptr_W) && !found) {
     if (buffer[curr_idx] == '.') {
-//      Serial.println("Found a command.");
       found = true;
     }
     curr_idx = (curr_idx+1)%BUFFER_SIZE;
     total++;
   }
 
-  // when we find it, fill up the command string pointer
+  // if we found it, fill up the command string pointer
   if (found) {
     int idx = buff_ptr_R;
     for (int i = 0; i < total; i++) {
