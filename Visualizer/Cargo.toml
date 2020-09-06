@@ -10,4 +10,5 @@ edition = "2018"
 plotters = "^0.2.15"
 terminal-menu = "^1.9.7"
 serialport = "3.2"
+pbr = "1.0.3"
 # sudo apt-get install libudev-dev

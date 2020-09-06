@@ -68,7 +68,7 @@ pub fn open_serial_comm() -> Result<Port> {
 /// 
 /// * A string on success, an error on failure.
 pub fn receive_message(port: &mut Port) -> Result<String> {
-    // println!("[receive_message] Reading from {} at {} baud at 1Hz", port.port_name, port.baud_rate);
+    // println!("[receive_message] Reading from {} at {} baud", port.port_name, port.baud_rate);
 
     let mut serial_buf: Vec<u8> = vec![0; MAX_BUF_SIZE];
     match port.port.read(serial_buf.as_mut_slice()) {
@@ -88,7 +88,7 @@ pub fn receive_message(port: &mut Port) -> Result<String> {
 /// 
 /// * Nothing on success, an error on failure.
 pub fn send_message(port: &mut Port, message: String) -> Result<()> {
-    println!("[send_message] Writing from {} at {} baud at 1Hz", port.port_name, port.baud_rate);
+    println!("[send_message] Writing \"{}\" to {} at {} baud", message, port.port_name, port.baud_rate);
 
     match port.port.write(message.as_bytes()) {
         Ok(_res) => Ok(()),

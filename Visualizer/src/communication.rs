@@ -9,6 +9,7 @@
 //! * Date Created: 9/2/20
 //! * Last Modified: 9/2/20
 
+use pbr::ProgressBar;
 use std::{
     error,
     thread,
@@ -33,78 +34,97 @@ type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 /// 
 /// * A string on success, an error on failure.
 pub fn execute_test(command_packet: CommandPacket) -> Result<PacketSet> {
-    // open the port
-    match open_serial_comm() {
-        Ok(mut port) => {
-            // test
-            // if let Ok(_) = send_message(&mut port, String::from("Hello world.")) {
-                let mut iter = 0;
-                let mut string_idx = 0;
-                let strings = [
-                    "Hello",
-                    " world",
-                    ".",
-                    "Nice to meet you."
-                ];
-                loop {
-                    // testing for output
-                    if let Ok(msg) = receive_message(&mut port) {
-                        print!("{}", msg);
-                    }
+    // A couple of things should be done in order to perform and collect data from a test regime:
+    // 1) We need to open the serial communications port
+    // 2) The program sends the test regime command (i.e. CMD [ID] [START_VOLTAGE] [END_VOLTAGE] [VOLTAGE_RESOLUTION])
+    // 3) The program checks if the user is ready, and then sends the START [ID] command. The nucleo begins processing the test regime associated with that ID.
+    // 4) The nucleo begins sending back data in the format DATA [ID] [SUBID] [MEASUREMENT_TYPE] [MEASUREMENT_DATA].
+    // 5) The nucleo completed data transfer by submitting the end command. END [ID].
 
-                    if iter == 0 {
-                        if string_idx < 4 {
-                            if let Ok(_) = send_message(&mut port, String::from(strings[string_idx])) {}
-                            string_idx += 1;
-                        }
-                    }
-                    iter = (iter + 1)%5000;
+    // 0) preprocessing: verify that the command packet is correct
+    if let Err(err) = command_packet.verify_packet() {
+        return Err(err);
+    }
+    let cmd_id = command_packet.packet_id.clone();
+    let cmd_args = command_packet.packet_params.clone();
+
+    // 1) open the port
+    let port = open_serial_comm();
+    if let Err(err) = port {
+        return Err(err);
+    }
+
+    // 2) send the command
+    let mut port = port.unwrap(); // okay since we handled the err case earlier
+    if let Err(err) = command_packet.transmit_packet(&mut port) {
+        return Err(err);
+    }
+    println!("\nCommand packet sent to the PV Curve Tracer Board.");
+
+    // 3) check to see if the user is ready
+    println!("Are you ready to begin execution? (Y/abort) ");
+    let mut response = String::from("");
+    std::io::stdin().read_line(&mut response).unwrap();
+    if response != "Y\n" {
+        return Err("[execute_test] Aborting execution.".into());
+    } else {
+        println!("[execute_test] Beginning execution.");
+    }
+    // and send the start command
+    if let Err(err) = CommandPacket::new(cmd_id.clone(), PacketCommand::START, vec!()).transmit_packet(&mut port) {
+        return Err(err);
+    }
+
+    // 4) begin retrieving data
+    let mut packet_set = PacketSet {
+        command_packet: command_packet,
+        data_packets: vec!()
+    };
+
+    // initiate progress bar - estimate the number of subID groups that'll need to be collected based on the command
+    let count = ((cmd_args[1] - cmd_args[0])/cmd_args[2]) as u64 + 1;
+    let mut pb = ProgressBar::new(count);
+    pb.format("╢▌▌░╟");
+
+    // while we haven't received the end command
+    let mut end = true; // set to true for testing
+    while !end {
+        // TODO: option for user sigint
+
+        // retrieve packet, if any
+        match receive_message(&mut port) {
+            Ok(res) => {
+                let res_copy = res.clone();
+                let res_vec:Vec<&str> = res_copy.split(' ').collect();
+
+                // if res is a DataPacket, add to the packet_set
+                if let Ok(data_packet) = DataPacket::parse_packet_string(res) {
+                    // TODO: check for subid and update the progress bar
+                    pb.inc();
+                    
+                    packet_set.data_packets.push(data_packet);
                 }
-            // }
-            return Ok(PacketSet {
-                command_packet: command_packet,
-                data_packets: vec!()
-            })
-            // // verify that it's correct
-            // match command_packet.verify_packet() {
-            //     Ok(()) => {
-            //         // send the command
-            //         match command_packet.transmit_packet(&mut port) {
-            //             Ok(()) => {
-            //                 // retrieve responses
-            //                 let mut packet_set = PacketSet {
-            //                     command_packet: command_packet,
-            //                     data_packets: vec!()
-            //                 };
-            //                 // TODO: add some fancy progress bar here and loop until last expected packet is found
-
-            //                 // SAMPLE CODE
-            //                 for iteration in 1..5 {
-            //                     println!("Iteration: {}", iteration.to_string());
-            //                     // create generic packet
-            //                     let data_packet = DataPacket::new(-1, -1, PacketType::VOLTAGE, -1.0);
-            //                     // retrieve data
-            //                     if let Ok(_) = data_packet.receive_packet(&mut port) {
-            //                         // TODO: look for ending packet or parse for it
-            //                         if let Ok(_) = data_packet.verify_packet() {
-            //                             // TODO: do the same manip as in parse_file
-            //                             packet_set.data_packets.push(data_packet);
-            //                         }
-            //                     }
-            //                     thread::sleep(Duration::from_millis(5000));
-            //                 }
-            //                 // return the completed packets
-            //                 Ok(packet_set)
-            //             },
-            //             Err(err) => Err(format!("{}", err).into())
-            //         }
-            //     },
-                // Err(err) => Err(format!("{}", err).into())
-            // }
-        },
-        Err(err) => {
-            Err(format!("{}", err).into())
+                // if res is an END command with a matching id, set end to true
+                else if (res_vec[0] == "END") && (res_vec[1].parse::<i32>().unwrap() == cmd_id) {
+                    end = true;
+                }
+                // else print invalid packet type error
+                else {
+                    println!("[execute_test] Invalid packet type.");
+                }
+            },
+            Err(err) => println!("[execute_test] {}", err)
         }
     }
+
+    // TODO: test
+    for _ in 0..count {
+        pb.inc();
+        thread::sleep(Duration::from_millis(20));
+    }
+    // complete the progress bar
+    pb.finish_print("All packets received.");
+
+    Ok(packet_set)
 }
 

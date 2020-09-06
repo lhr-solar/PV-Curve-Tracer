@@ -80,14 +80,14 @@ fn main() -> Result<()> {
             // error check bounds
             if voltage_start >= voltage_end {
                 println!("Out of bounds error regarding voltage start and end params.");
-                println!("Aborting.");
+                println!("[main] Aborting.");
             } else {
                 // when complete display results and ask for confirmation
                 println!("Selection:\t{}", selection_result);
                 println!("Selected Parameters:");
-                println!("Start Voltage:\t\t{}", voltage_start);
-                println!("End Voltage:\t\t{}", voltage_end);
-                println!("Voltage Resolution:\t{}", voltage_resolution);
+                println!("Start Voltage (mV):\t\t{}", voltage_start);
+                println!("End Voltage (mV):\t\t{}", voltage_end);
+                println!("Voltage Resolution (mV):\t{}", voltage_resolution);
                 println!("Are these parameters correct? (Y/n)");
 
                 let mut response = String::from("");
@@ -96,34 +96,27 @@ fn main() -> Result<()> {
                     // warn about operating procedures
                     print_disclaimer();
                     println!("Please rotate the rotary switch to {} mode labeled on the board.", selection_result);
-                    println!("Now, connect the PV to the terminals of the board.");
-                    // ask for final okay
-                    response = String::from("");
-                    println!("Are you ready to begin execution? (Y/abort) ");
-                    std::io::stdin().read_line(&mut response).unwrap();
-                    if response == "Y\n" {
-                        // execute and wait for the packets to roll in
-                        println!("Starting execution.");
-                        // generate the command packet
-                        let packet_command:PacketCommand;
-                        if selection_result == "TEST" {
-                            packet_command = PacketCommand::TEST;
-                        } else {
-                            packet_command = PacketCommand::START
-                        }
-                        if let Ok(_packet_set) = execute_test(CommandPacket::new(
+                    println!("Now, connect the PV to the terminals of the board.\n");
+
+                    // generate the command packet
+                    let packet_command = PacketCommand::TEST;
+
+                    // start execution.
+                    match execute_test(
+                        CommandPacket::new(
                             packet_id,
                             packet_command,
                             vec!(voltage_start, voltage_end, voltage_resolution)
-                        )) {
+                        )
+                    ) {
+                        Ok(_packet_set) => {
                             // TODO: visualize it
                             // TODO: give option to save
-                        };
-                    } else {
-                        println!("Aborting.");
-                    }
+                        },
+                        Err(err) => println!("{}", err)
+                    };
                 } else {
-                    println!("Aborting.");
+                    println!("[main] Aborting.");
                 }
             }
         }
@@ -143,7 +136,7 @@ fn main() -> Result<()> {
 fn main_menu() -> TerminalMenu {
     //create the menu for 1a/b
     let menu_main = menu(vec![
-        label("(use arrow keys or wasd)"),
+        label("\n(use arrow keys or wasd)"),
         scroll("Selection", vec![
             "Visualize Data from Preexisting File", 
             "Send Command to Curve Tracer and Collect Data",

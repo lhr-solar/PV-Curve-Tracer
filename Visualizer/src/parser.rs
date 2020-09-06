@@ -26,6 +26,7 @@ type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 pub enum PacketCommand {
     START,
     TEST,
+    END
 }
 
 /// the PacketType enum is used to differentiate between the data returned in the Data Packet.
@@ -161,8 +162,24 @@ impl CommandPacket {
     /// * Nothing on success, an error on failure.
     pub fn transmit_packet(&self, port: &mut Port) -> Result<()> {
         // convert CommandPacket to string for transmission
-        // TODO: this
-        let message = String::from("HELLO");
+        let mut message = String::from("");
+        if self.packet_command == PacketCommand::TEST {
+            message.push_str("CMD ");
+        } else if self.packet_command == PacketCommand::START {
+            message.push_str("START ");
+        } else if self.packet_command == PacketCommand::END {
+            message.push_str("END ");
+        } else {
+            return Err("[transmit_packet] invalid packet command enum.".into());
+        }
+        message.push_str(&self.packet_id.to_string());
+        message.push_str(" ");
+        
+        for val in &self.packet_params {
+            message.push_str(&val.to_string());
+            message.push_str(" ");
+        }
+
         // send message
         match send_message(port, message) {
             Ok(()) => Ok(()),
