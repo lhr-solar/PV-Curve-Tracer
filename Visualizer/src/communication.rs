@@ -7,13 +7,13 @@
 //! * Author: Matthew Yu
 //! * Organization: UT Solar Vehicles Team
 //! * Date Created: 9/2/20
-//! * Last Modified: 9/2/20
+//! * Last Modified: 9/7/20
 
 use pbr::ProgressBar;
 use std::{
     error,
     thread,
-    time::Duration,
+    time::Duration
 };
 
 use crate::{
@@ -56,6 +56,12 @@ pub fn execute_test(command_packet: CommandPacket) -> Result<PacketSet> {
 
     // 2) send the command
     let mut port = port.unwrap(); // okay since we handled the err case earlier
+    // Send any sort of message to trigger ARDUINO startup. Wait the startup time.
+    if let Err(err) = send_message(&mut port, String::from(".")) {
+        return Err(err);
+    }
+    thread::sleep(Duration::new(2, 0));
+
     if let Err(err) = command_packet.transmit_packet(&mut port) {
         return Err(err);
     }
@@ -65,6 +71,7 @@ pub fn execute_test(command_packet: CommandPacket) -> Result<PacketSet> {
     println!("Are you ready to begin execution? (Y/abort) ");
     let mut response = String::from("");
     std::io::stdin().read_line(&mut response).unwrap();
+    println!();
     if response != "Y\n" {
         return Err("[execute_test] Aborting execution.".into());
     } else {
@@ -87,43 +94,52 @@ pub fn execute_test(command_packet: CommandPacket) -> Result<PacketSet> {
     pb.format("╢▌▌░╟");
 
     // while we haven't received the end command
-    let mut end = true; // set to true for testing
+    let mut end = false; // set to true for testing
+    // maintain a FIFO queue to hold result strings. concatenate and unload every time a section gets an end delimeter.
+    let mut buffer = String::new();
+    let mut cur_subid = 0;
     while !end {
-        // TODO: option for user sigint
-
+        // TODO: set a sigint handler for gracefully exiting.
         // retrieve packet, if any
         match receive_message(&mut port) {
             Ok(res) => {
-                let res_copy = res.clone();
-                let res_vec:Vec<&str> = res_copy.split(' ').collect();
-
-                // if res is a DataPacket, add to the packet_set
-                if let Ok(data_packet) = DataPacket::parse_packet_string(res) {
-                    // TODO: check for subid and update the progress bar
-                    pb.inc();
-                    
-                    packet_set.data_packets.push(data_packet);
+                buffer.push_str(&res);
+                let clone = buffer.clone();
+                let mut lines:Vec<&str> = clone.split(';').collect();
+                while lines.len() > 1 {
+                    // grab all complete lines, and attempt to parse them
+                    let res = String::from(lines.remove(0).trim());
+                    let res_copy = res.clone();
+                    let res_vec:Vec<&str> = res_copy.split(' ').collect();
+                    // if res is a DataPacket, add to the packet_set
+                    if let Ok(data_packet) = DataPacket::parse_packet_string(res.clone()) {
+                        // check for subid and update the progress bar
+                        if data_packet.packet_subid > cur_subid {
+                            pb.set(data_packet.packet_subid as u64);
+                            cur_subid = data_packet.packet_subid;
+                        }
+                        // add to the packet set
+                        packet_set.data_packets.push(data_packet);
+                    }
+                    // if res is an END command with a matching id, set end to true
+                    else if (res_vec[0] == "END") && (res_vec[1].parse::<i32>().unwrap() == cmd_id) {
+                        end = true;
+                    }
+                    // else print invalid packet type error
+                    else {
+                        println!("[execute_test] Invalid packet type: {}.", res);
+                    }
                 }
-                // if res is an END command with a matching id, set end to true
-                else if (res_vec[0] == "END") && (res_vec[1].parse::<i32>().unwrap() == cmd_id) {
-                    end = true;
-                }
-                // else print invalid packet type error
-                else {
-                    println!("[execute_test] Invalid packet type.");
-                }
+                // only thing left in the buffer should be the incomplete lines
+                buffer = String::from(lines[0]);
             },
-            Err(err) => println!("[execute_test] {}", err)
+            Err(err) => {
+                println!("[execute_test] {}", err);
+            }
         }
     }
-
-    // TODO: test
-    for _ in 0..count {
-        pb.inc();
-        thread::sleep(Duration::from_millis(20));
-    }
     // complete the progress bar
-    pb.finish_print("All packets received.");
+    pb.finish_print("[execute_test] All packets received.");
 
     Ok(packet_set)
 }

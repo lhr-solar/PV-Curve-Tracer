@@ -5,7 +5,7 @@
 //! * Author: Matthew Yu
 //! * Organization: UT Solar Vehicles Team
 //! * Date Created: 8/29/20
-//! * Last Modified: 9/1/20
+//! * Last Modified: 9/7/20
 
 // general communication functions
 mod communication;
@@ -17,7 +17,6 @@ use parser::*;
 mod port;
 // visualization of packets
 mod visualizer;
-use visualizer::*;
 
 use terminal_menu::*;
 use std::{
@@ -109,9 +108,12 @@ fn main() -> Result<()> {
                             vec!(voltage_start, voltage_end, voltage_resolution)
                         )
                     ) {
-                        Ok(_packet_set) => {
-                            // TODO: visualize it
-                            // TODO: give option to save
+                        Ok(packet_set) => {
+                            // save into file
+                            if let Ok(_) = packet_set.save_packet_set() {
+                                // visualize it
+                                packet_set.visualize();
+                            }
                         },
                         Err(err) => println!("{}", err)
                     };
@@ -169,7 +171,11 @@ fn file_selection_menu() {
         }
         // parse the file into packets and on success, visualize
         match parse_file(file_path.clone()) {
-            Ok(packets) => visualize_packets(packets),
+            Ok(packets) => {
+                for packet in packets {
+                    packet.visualize();
+                }
+            },
             Err(err) => println!("{}", err)
         }
     }

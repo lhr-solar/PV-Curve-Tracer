@@ -7,8 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-plotters = "^0.2.15"
-terminal-menu = "^1.9.7"
-serialport = "3.2"
+chrono = "0.4"
+# ctrlc = "3.1.6"
 pbr = "1.0.3"
+plotters = "^0.2.15"
+serialport = "3.3.0"
+terminal-menu = "^1.9.7"
 # sudo apt-get install libudev-dev

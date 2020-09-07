@@ -262,6 +262,7 @@ dependencies = [
 name = "curve_tracer"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "pbr",
  "plotters",
  "serialport",
