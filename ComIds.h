@@ -5,11 +5,12 @@
  * Author: Matthew Yu
  * Organization: UT Solar Vehicles Team
  * Created on: May 25th, 2021
- * Last Modified: 05/25/21
+ * Last Modified: 06/29/21
  *
  * File Description: This file defines valid MSG IDs for the Array/MPPT system.
  */
 #pragma once
+
 #define SUNSCTR_1_ARR_V_SP      0x600
 #define SUNSCTR_1_ARR_V_MEAS    0x601
 #define SUNSCTR_1_ARR_C_MEAS    0x602

@@ -3,7 +3,7 @@
  * File: Errors.h
  * Author: Matthew Yu (2021).
  * Created on: 06/12/21
- * Last Modified: 06/12/21
+ * Last Modified: 06/29/21
  * File Description: This file describes potential error codes for software
  * exceptions in user programs.
  */
@@ -23,3 +23,4 @@
 #define ERR_INVALID_VOLTAGE_CONSISTENCY 0x103
 #define ERR_INVALID_VOLTAGE_RESOLUTION  0x104
 #define ERR_INVALID_DURATION            0x105
+#define ERR_INVALID_FIFO_DEQUEUE        0x106

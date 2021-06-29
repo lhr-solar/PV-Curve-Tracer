@@ -4,7 +4,7 @@
  * Author: Matthew Yu (2021).
  * Organization: UT Solar Vehicles Team
  * Created on: 05/29/21
- * Last Modified: 06/27/21
+ * Last Modified: 06/29/21
  * File Description: This file describes the operation and execution of the
  * PV Curve Tracer board for the UT LHR Solar Vehicles Team. 
  * L432KC Pinout:
@@ -50,6 +50,7 @@
 #define CURRENT_IDX 1
 #define IRRADIANCE_IDX 2
 #define TEMPERATURE_IDX 3
+#define PRELUDE 0xFF
 
 
 /** Struct definitions. */
@@ -73,7 +74,7 @@ struct profile {
     float voltageResolution;    /* Voltage resolution, in V (0 - 1 V). */
 
     /* Derivative variables. */
-    uint32_t sampleId;          /* Current sampleId. Only modifiable by sample() during an experiment. */
+    uint32_t sampleId;          /* Current sample ID. */
     uint32_t numSamples;        /* Number of samples in the experiment. */
 };
 /** The result struct is used by information sources (i.e. sensors or CAN/serial
@@ -119,30 +120,12 @@ struct profile testProfile = {
     .sampleId = 0
 };
 struct result results[4] = {
-    {
-        .isProcessed = false,
-        .sensorType = result::VOLTAGE,
-        .sampleId = 0,
-        .value = 0.0
-    }, {
-        .isProcessed = false,
-        .sensorType = result::CURRENT,
-        .sampleId = 0,
-        .value = 0.0
-    }, {
-        .isProcessed = false,
-        .sensorType = result::IRRADIANCE,
-        .sampleId = 0,
-        .value = 0.0
-    }, {
-        .isProcessed = false,
-        .sensorType = result::TEMPERATURE,
-        .sampleId = 0,
-        .value = 0.0
-    },
+    { .sensorType = result::VOLTAGE     },
+    { .sensorType = result::CURRENT     },
+    { .sensorType = result::IRRADIANCE  },
+    { .sensorType = result::TEMPERATURE }
 };
-uint16_t lastMsgId = INVALID_MSG_ID;
-uint16_t lastErrorCode = ERR_NONE;
+uint16_t errorCode = ERR_NONE;
 
 /** Processing structures. */
 static Thread threadProcessing, threadTesting;
@@ -159,7 +142,7 @@ static void heartbeat(void);
 
 /** Experiment Management. */
 /** Samples the onboard sensors and fills in a results reference. */
-static void sampleOnboardSensors(uint32_t sampleId, struct result *resultVoltage, struct result *resultCurrent);
+static void sampleOnboardSensors(struct profile* profile, struct result *resultVoltage, struct result *resultCurrent);
 static void performTest(void);
 
 /** Inbound Message Processing. */
@@ -168,9 +151,10 @@ static uint16_t checkProfile(char *buf, struct profile *profile);
 
 /** Outbound Message Processing. */
 void processResult(uint16_t msgId, struct result *result);
-void processError(uint16_t msgId, uint16_t errorCode);
+void processError(uint16_t msgId, uint16_t errorCode, uint16_t errorContext);
 
 /** Error Handling. */
+static void setError(uint16_t msgId, uint16_t errCode, uint16_t errorContext);
 static void errorLoop(void);
 
 /** Function implementations. */
@@ -198,17 +182,11 @@ int main() {
     threadTesting.start(performTest);
 
     /* Main thread looks for messages. */
-    uint32_t i = 0;
     while (true) {
-        if (i++ == 3) { 
-            uint16_t errCode = checkProfile(nullptr, &testProfile); 
-            testProfile.complete = true;
-            while(1);
-        }
-        // pollSerial();
+        pollSerial();
         /* pollCan(); */
         /* pollAltSerial(); */
-        ThisThread::sleep_for(chrono::milliseconds(1000));
+        ThisThread::sleep_for(chrono::milliseconds(100));
     }
 }
 
@@ -226,13 +204,13 @@ static void cycleLed(DigitalOut *dout, uint8_t numCycles, std::chrono::milliseco
 
 
 /** Experiment Management. */
-static void sampleOnboardSensors(uint32_t sampleId, struct result *resultVoltage, struct result *resultCurrent) {
+static void sampleOnboardSensors(struct profile *profile, struct result *resultVoltage, struct result *resultCurrent) {
     resultVoltage->value = sensorVoltage;
-    resultVoltage->sampleId = sampleId;
+    resultVoltage->sampleId = profile->sampleId;
     resultVoltage->isProcessed = false;
 
     resultCurrent->value = sensorCurrent;
-    resultCurrent->sampleId = sampleId;
+    resultCurrent->sampleId = profile->sampleId;
     resultCurrent->isProcessed = false;
 }
 static void performTest(void) {
@@ -255,7 +233,7 @@ static void performTest(void) {
                 ThisThread::sleep_for(std::chrono::milliseconds(15)); /* TODO: make dependent on voltage step and mode. */
 
                 /* Capture sensor data and post to queue. */
-                sampleOnboardSensors(testProfile.sampleId, &results[VOLTAGE_IDX], &results[CURRENT_IDX]);
+                sampleOnboardSensors(&testProfile, &results[VOLTAGE_IDX], &results[CURRENT_IDX]);
                 queue.call(processResult, CRVTRCR_VOLT_MEAS, &results[VOLTAGE_IDX]);
                 queue.call(processResult, CRVTRCR_CURR_MEAS, &results[CURRENT_IDX]);
 
@@ -279,7 +257,6 @@ static void performTest(void) {
 static void pollSerial(void) {
     #define MAX_BUFFER_SIZE 3 * 8
     #define DATA_TRANSFER_SIZE 4
-    #define PRELUDE 0xFF
     
     static char data[DATA_TRANSFER_SIZE] = { 0 };       /* Buffer for reading and peeking at data. */
     static char buffer[MAX_BUFFER_SIZE];                /* Buffer for fifo storage. */
@@ -288,17 +265,19 @@ static void pollSerial(void) {
     /* If there is a an opportunity to read a byte, attempt to take it. */
     if (!fifo.isFull()) {
         if (serialPort.read(data, 1)) {
+            printf("Read: %02x\n", data[0]);
             fifo.enqueue(data[0]);
         }
     }
     
     /* Peek into the FIFO for the first 3 bytes. */
     if (fifo.peek(data, DATA_TRANSFER_SIZE) == 3) {
-        /* Capture and check the prelude. */
         if (data[0] != PRELUDE) {
-            /* Return early after discarding the first byte. */
             char throwawayByte;
-            fifo.dequeue(throwawayByte); /* TODO: assume this returns true. Otherwise an exception is needed. */
+            if (!fifo.dequeue(throwawayByte)) {
+                /* Fault if fifo cannot discard the first byte. */
+                setError(CRVTRCR_FAULT, ERR_INVALID_FIFO_DEQUEUE, 0x00);
+            }
             return;
         }
         
@@ -315,14 +294,10 @@ static void pollSerial(void) {
                         fifo.dequeue(input[i]);
                     }
 
-                    /* Check the profile and set it if correct. */
+                    /* Validate the profile. */
                     uint16_t errCode = checkProfile(input, &testProfile);
-                    if (errCode) {
-                        /* Invalid profile. */
-                        testProfile.complete = false;
-                        queue.call(processError, msgId, errCode);
-                    }
-                    testProfile.complete = false;
+                    if (errCode) setError(CRVTRCR_FAULT, errCode, 0x00);
+                    else testProfile.complete = true;
                 }
                 #undef CRVTRCR_INP_PROFILE_NUM_BYTES
                 break;
@@ -331,7 +306,7 @@ static void pollSerial(void) {
             case CRVTRCR_RESULT:
             case CRVTRCR_FAULT: 
             default:
-                queue.call(processError, msgId, ERR_UNEXPECTED_MSG_ID);
+                setError(CRVTRCR_FAULT, ERR_UNEXPECTED_MSG_ID, 0x00);
                 break;
         }
     }
@@ -340,20 +315,24 @@ static void pollSerial(void) {
     #undef MAX_BUFFER_SIZE
 }
 static uint16_t checkProfile(char *buf, struct profile *profile) {
+    #define UPPER_NIBBLE 0xF0
+    #define LOWER_NIBBLE 0x0F
+
+
     /* Byte 3, most significant nibble (MSN) is Test Regime Type. */
-    profile->testRegime = profile::CELL; /* TODO: Replace with actual inputs. */
+    profile->testRegime = (enum profile::regime)((buf[3] & UPPER_NIBBLE) >> 4);
     if (profile->testRegime == profile::NO_REGIME || profile->testRegime >= profile::RESERVED1) {
         return ERR_INVALID_PROFILE;
     }
 
     /* Byte 3 LSN, 4 is Start Voltage * 1000. */
-    profile->voltageStart = 0.0;
+    profile->voltageStart = (float) (((buf[3] & LOWER_NIBBLE) << 8) | buf[4]) / 1000.0;
     if (profile->voltageStart < 0.0 || profile->voltageStart > 3.3) {
         return ERR_INVALID_VOLTAGE_START;
     }
 
     /* Byte 5, 6 MSN is End Voltage * 1000. */
-    profile->voltageEnd = 0.7;
+    profile->voltageEnd = (float) ((buf[5] << 4) | ((buf[6] & UPPER_NIBBLE) >> 4)) / 1000.0;
     if (profile->voltageEnd < 0.0 || profile->voltageEnd > 3.3) {
         return ERR_INVALID_VOLTAGE_END;
     }
@@ -363,12 +342,15 @@ static uint16_t checkProfile(char *buf, struct profile *profile) {
     }
 
     /* Byte 6 LSN, 7 is Voltage Resolution * 1000. */
-    profile->voltageResolution = 0.05;
+    profile->voltageResolution = (float) (((buf[6] & LOWER_NIBBLE) << 8) | buf[7]) / 1000.0;
     if (profile->voltageResolution <= 0.0 || profile->voltageResolution > 1.0) {
         return ERR_INVALID_VOLTAGE_RESOLUTION;
     }
 
     return ERR_NONE;
+
+    #undef UPPER_NIBBLE
+    #undef LOWER_NIBBLE
 }
 
 
@@ -376,7 +358,7 @@ static uint16_t checkProfile(char *buf, struct profile *profile) {
 void processResult(uint16_t msgId, struct result *result) {
     printf(
         "%02x%03x%01x%03x%05x",
-        0xFF,
+        PRELUDE,
         msgId,
         result->sensorType,
         result->sampleId,
@@ -384,17 +366,33 @@ void processResult(uint16_t msgId, struct result *result) {
     );
     result->isProcessed = true;
 }
-void processError(uint16_t msgId, uint16_t errorCode) {
+void processError(uint16_t msgId, uint16_t errorCode, uint16_t errorContext) {
     printf(
-        "%02x%03x%03x", 
-        0xFF,
+        "%02x%03x%03x%04x", 
+        PRELUDE,
         msgId,
-        errorCode
+        errorCode,
+        errorContext
     );
 }
 
+
 /** Error Handling. */
+static void setError(uint16_t msgId, uint16_t errCode, uint16_t errorContext) {
+    /* Set the error code to force other threads to halt. */
+    errorCode = errCode;
+    testProfile.complete = false;
+    
+    /* Tell the processing thread to submit an exception message. */
+    queue.call(processError, msgId, errCode, errorContext);
+    
+    /* Error loop this thread. */
+    errorLoop();
+}
 static void errorLoop(void) {
+    /* Turn on error LED. */
     ledError = 1;
+
+    /* Loop forever. */
     while (true);
 }
