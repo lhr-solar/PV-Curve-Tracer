@@ -1,29 +1,12 @@
 /**
- * Project: PV Curve Tracer Board
- * File: main.cpp
+ * Project: mbed-shared-components
+ * File: fifo.cpp
  * Author: Matthew Yu (2021).
  * Organization: UT Solar Vehicles Team
- * Created on: 05/29/21
+ * Created on: 06/26/21
  * Last Modified: 06/29/21
- * File Description: This file describes the operation and execution of the
- * PV Curve Tracer board for the UT LHR Solar Vehicles Team. 
- * L432KC Pinout:
- * https://os.mbed.com/media/uploads/bcostm/nucleo_l432kc_2017_10_09.png
- * Note: The following pins must be reserved during STLink debugging:
- * - PA11 | D10 | USP_DM
- * - PA12 | D2  | USB_DP
- * - PA13 | N/A | USB_NOE
- * - PC14 | D7  | RCC_OSC32_IN
- * - PC15 | D8  | RCC_OSC32_OUT
- * - PA14 | N/A | SYS_JTCK_SWCLK
- * - PA15 | N/A | SYS_JTDI
- * - PB3  | D13 | SYS_JTDO_SW0
- * - PA13 | N/A | SYS_JTMS_SWDIO
- * - PB4  | D12 | SYS_JTRST
- * - PB7  | D4  | SYS_PVD_IN
- * - PA0  | A0  | SYS_WKUP1
- * - PA2  | A7  | SYS_WKUP4
- * L432KC specific.
+ * File Description: This file declares and implements a Fifo class, which
+ * can be used for message passing.
  */
 
 

@@ -28,6 +28,7 @@ in the firmware.
 - Migrate serial input processing, CAN input processing to class.
 - Create common com input processing class that encompasses the above.
 - Look at common eventQueue com output processing class that encompasses the above.
+- Handle invalid input data as an exception, not an error.
 
 ---
 ## Operation
@@ -111,13 +112,13 @@ Blackbody boards. All messages are input sans the Blackbody Enable/Disable
 command; the user, through the PV Curve Tracer can disable external sensor input
 messages through this command.
 
-| Name                                      | Direction | ID    | Data Width [L:S]   | Data Type                   | Frequency |
-|-------------------------------------------|-----------|-------|--------------------|-----------------------------|-----------|
-| Blackbody Temperature Sensors Measurement | I         | 0x620 | [39 : 32] [31 : 0] | RTD ID; C, signed float*100 | 2 Hz      |
-| Blackbody Irradiance Sensor 1 Measurement | I         | 0x630 | [31 : 0]           | W/m^2, signed float*100     | 10 Hz     |
-| Blackbody Irradiance Sensor 2 Measurement | I         | 0x631 | [31 : 0]           | W/m^2, signed float*100     | 10 Hz     |
-| Blackbody Enable/Disable                  | O         | 0x632 | [0 : 0]            | 1: Halt, 0: Restart         | Async     |
-| Blackbody Board Fault                     | I         | 0x633 | [7 : 0]            | Error ID, enum              | Async     |
+| Name                                      | Direction | ID    | Data Width [L:S]   | Data Type                    | Frequency |
+|-------------------------------------------|-----------|-------|--------------------|------------------------------|-----------|
+| Blackbody Temperature Sensors Measurement | I         | 0x620 | [39 : 32] [31 : 0] | RTD ID; C, signed float*1000 | 2 Hz      |
+| Blackbody Irradiance Sensor 1 Measurement | I         | 0x630 | [31 : 0]           | W/m^2, signed float*1000     | 10 Hz     |
+| Blackbody Irradiance Sensor 2 Measurement | I         | 0x631 | [31 : 0]           | W/m^2, signed float*1000     | 10 Hz     |
+| Blackbody Enable/Disable                  | O         | 0x632 | [0 : 0]            | 1: Halt, 0: Restart          | Async     |
+| Blackbody Board Fault                     | I         | 0x633 | [15 : 8][7 : 0]    | Error ID, error context      | Async     |
 
 ### Serial alternative communication protocol.
 In the event of a CAN failure or testing, the following serial communication
