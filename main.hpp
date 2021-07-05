@@ -32,9 +32,12 @@
 #include "mbed.h"
 #include <chrono>
 #include <cstdio>
-#include "Errors.h"
-#include "ComIds.h"
-#include "Fifo.cpp"
+#include <Misc/Errors.hpp>
+#include <Misc/ComIds.hpp>
+#include <Fifo/Fifo.hpp>
+#include <Misc/MType.hpp>
+#include "VoltageAdcSensor.hpp"
+#include "CurrentAdcSensor.hpp"
 
 /** Defines. */
 #define USB_TX USBTX /* A7. */
@@ -50,10 +53,6 @@
 #define LED_SCANNING D0
 #define LED_ERROR D1
 #define QUEUE_SIZE 100
-#define VOLTAGE_IDX 0
-#define CURRENT_IDX 1
-#define IRRADIANCE_IDX 2
-#define TEMPERATURE_IDX 3
 #define PRELUDE 0xFF
 
 /** Struct definitions. */
@@ -79,23 +78,7 @@ struct profile {
     /* Derivative variables. */
     uint32_t sampleId;          /* Current sample ID. */
     uint32_t numSamples;        /* Number of samples in the experiment. */
-};
-/** The result struct is used by information sources (i.e. sensors or CAN/serial
-    messages from sensors) to format data posting to the user. */
-struct result {
-    bool isProcessed;           /* if true, the data can be scratched. */
-    enum type {                 /* Result source. */
-        NONE, 
-        VOLTAGE, 
-        CURRENT, 
-        IRRADIANCE, 
-        TEMPERATURE, 
-        RESERVED1, 
-        RESERVED2,
-        RESERVED3
-    } sensorType;
-    uint32_t sampleId;          /* Sample ID of result. */
-    float value;                /* Value of the result. */
+    uint32_t testDuration;
 };
 
 /** Function definitions. */
@@ -104,19 +87,18 @@ static void cycleLed(DigitalOut *dout, uint8_t numCycles, std::chrono::milliseco
 static void heartbeat(void);
 
 /** Sampling sensor data. */
-static void sampleOnboardSensors(struct profile* profile, struct result *resultVoltage, struct result *resultCurrent);
 static void performTest(void);
 
 /** Communication Input Processing. */
 static void pollSerial(void);
 static void pollCan(void);
 static uint16_t setProfile(char *buf, struct profile *profile);
-static uint16_t setTempMeas(char *buf, struct profile *profile);
-static uint16_t setIrradMeas(char *buf, struct profile *profile);
 
 /** Processing. */
-void processResult(uint16_t msgId, struct result *result);
-void processError(uint16_t msgId, uint16_t errorCode, uint16_t errorContext);
+static void processVoltageResult(uint32_t sampleId, float data);
+static void processCurrentResult(uint32_t sampleId, float data);
+static void processResult(uint16_t msgId, enum measurementType mType, uint32_t sampleId, uint32_t value);
+static void processError(uint16_t msgId, uint16_t errorCode, uint16_t errorContext);
 
 /** Error Handling. */
 static void setError(uint16_t msgId, uint16_t errCode, uint16_t errorContext);

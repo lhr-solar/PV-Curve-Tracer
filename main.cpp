@@ -26,9 +26,9 @@
  * L432KC specific.
  */
 
-
 /** Includes. */
 #include "main.hpp"
+#include <chrono>
 
 /** LEDs. */
 DigitalOut ledHeartbeat(D3);
@@ -40,10 +40,6 @@ DigitalOut ledError(LED_ERROR);
 /** Tickers. */
 LowPowerTicker tickHeartbeat;
 
-/** Sensors. */
-AnalogIn sensorVoltage(ADC_VOLTAGE);
-AnalogIn sensorCurrent(ADC_CURRENT);
-
 /** DAC. */
 AnalogOut controlDac(DAC_CONTROL);
 
@@ -51,25 +47,28 @@ AnalogOut controlDac(DAC_CONTROL);
 static BufferedSerial serialPort(USB_TX, USB_RX);
 static CAN canPort(CAN_RX, CAN_TX);
 
+/** Sensor. */
+AnalogIn sensorVoltage(ADC_VOLTAGE);
+AnalogIn sensorCurrent(ADC_CURRENT);
+static VoltageAdcSensor voltageSensor(&sensorVoltage);
+static CurrentAdcSensor currentSensor(&sensorCurrent);
+
 /** Globals */
 struct profile testProfile = {
     .complete = false,
     .testRegime = profile::NO_REGIME,
-    .sampleId = 0
+    .sampleId = 0,
+    .testDuration = 5000 /* 5000 ms. */
 };
-struct result results[4] = {
-    { .sensorType = result::VOLTAGE     },
-    { .sensorType = result::CURRENT     },
-    { .sensorType = result::IRRADIANCE  },
-    { .sensorType = result::TEMPERATURE }
-};
-uint16_t errorCode = ERR_NONE;
 
 /** Processing structures. */
 static EventQueue queue(QUEUE_SIZE * EVENTS_EVENT_SIZE);
+static uint16_t errorCode;
 
 /** Main routine. */
 int main() {
+    errorCode = ERR_NONE;
+
     /* Setup serial comm. */
     serialPort.set_baud(9600);
     serialPort.set_format(
@@ -88,7 +87,7 @@ int main() {
     /* Set a heartbeat toggle for 0.5 Hz. */
     tickHeartbeat.attach(&heartbeat, chrono::milliseconds(1000));
 
-    /* Start threads for processing data and capturing. */
+    /* Start threads for output message processing and profile testing. */
     Thread threadProcessing, threadTesting;
     threadProcessing.start(callback(&queue, &EventQueue::dispatch_forever));
     threadTesting.start(performTest);
@@ -113,15 +112,6 @@ static void cycleLed(DigitalOut *dout, uint8_t numCycles, std::chrono::milliseco
 }
 
 /** Sampling sensor data. */
-static void sampleOnboardSensors(struct profile *profile, struct result *resultVoltage, struct result *resultCurrent) {
-    resultVoltage->value = sensorVoltage;
-    resultVoltage->sampleId = profile->sampleId;
-    resultVoltage->isProcessed = false;
-
-    resultCurrent->value = sensorCurrent;
-    resultCurrent->sampleId = profile->sampleId;
-    resultCurrent->isProcessed = false;
-}
 static void performTest(void) {
     while (true) {
         /* Wait for profile to begin. */
@@ -133,25 +123,30 @@ static void performTest(void) {
             testProfile.numSamples = (testProfile.voltageEnd - testProfile.voltageStart)/testProfile.voltageResolution;
     
             /* Turn on scanning LED and perform test. */
+            chrono::milliseconds stepPeriod = chrono::milliseconds(testProfile.testDuration / testProfile.numSamples);
+            voltageSensor.start(stepPeriod);
+            currentSensor.start(stepPeriod);
             ledScanning = 1;
             do {
                 /* Set DAC output. Multiplied by 5x in HW. */
                 controlDac = (float) testProfile.sampleId * testProfile.voltageResolution + testProfile.voltageStart;
 
-                /* When DAC output is as expected, wait X ms for system to stabilize. */
-                ThisThread::sleep_for(std::chrono::milliseconds(15)); /* TODO: make dependent on voltage step and mode. */
+                /* Wait sample duration for next sample to populate. */
+                ThisThread::sleep_for(stepPeriod);
 
-                /* Capture sensor data and post to queue. */
-                sampleOnboardSensors(&testProfile, &results[VOLTAGE_IDX], &results[CURRENT_IDX]);
-                queue.call(processResult, CRVTRCR_VOLT_MEAS, &results[VOLTAGE_IDX]);
-                queue.call(processResult, CRVTRCR_CURR_MEAS, &results[CURRENT_IDX]);
+                /* Sample the results. */
+                float voltage = voltageSensor.getData();
+                float current = currentSensor.getData();
 
-                /* Idle until queue has processed the events. */
-                while (!results[VOLTAGE_IDX].isProcessed || !results[CURRENT_IDX].isProcessed)
-                    ThisThread::sleep_for(std::chrono::milliseconds(5));
+                /* Post to queue for messages. */
+                queue.call(processVoltageResult, testProfile.sampleId, voltage);
+                queue.call(processCurrentResult, testProfile.sampleId, current);
 
                 testProfile.sampleId++;
             } while (testProfile.sampleId < testProfile.numSamples);  
+
+            voltageSensor.stop();
+            currentSensor.stop();
 
             /* Turn off scanning LED and set testProfile back to false. */      
             ledScanning = 0;
@@ -235,23 +230,26 @@ static void pollCan(void) {
                        sensor measurement. Let's add support for this later. */
                     msg.data[4] = '\0';
                     /* TODO: test reinterpret cast is correct based on endianness. */
-                    results[TEMPERATURE_IDX].value = *(reinterpret_cast<float*>(msg.data)) / 1000.0;
-                    results[TEMPERATURE_IDX].sampleId = testProfile.sampleId;
-                    queue.call(processResult, msgId, &results[TEMPERATURE_IDX]);
+
+                    queue.call(
+                        processResult, 
+                        msgId, 
+                        measurementType::TEMPERATURE, 
+                        testProfile.sampleId, 
+                        *(reinterpret_cast<float*>(msg.data)) / 1000.0
+                    );
                 }
                 break;
             case BLKBDY_IRRAD_1_MEAS:
-                if (testProfile.complete) {
-                    results[IRRADIANCE_IDX].value = *(reinterpret_cast<float*>(msg.data)) / 1000.0;
-                    results[IRRADIANCE_IDX].sampleId = testProfile.sampleId;
-                    queue.call(processResult, msgId, &results[IRRADIANCE_IDX]);
-                }
-                break;
             case BLKBDY_IRRAD_2_MEAS:
                 if (testProfile.complete) {
-                    results[IRRADIANCE_IDX].value = *(reinterpret_cast<float*>(msg.data)) / 1000.0;
-                    results[IRRADIANCE_IDX].sampleId = testProfile.sampleId;
-                    queue.call(processResult, msgId, &results[IRRADIANCE_IDX]);
+                    queue.call(
+                        processResult, 
+                        msgId, 
+                        measurementType::IRRADIANCE, 
+                        testProfile.sampleId, 
+                        *(reinterpret_cast<float*>(msg.data)) / 1000.0
+                    );
                 }
                 break;
             case BLKBDY_FAULT:
@@ -304,26 +302,57 @@ static uint16_t setProfile(char *buf, struct profile *profile) {
     #undef UPPER_NIBBLE
     #undef LOWER_NIBBLE
 }
-static uint16_t setTempMeas(char *buf, struct profile *profile) {
-    return ERR_NONE;
-}
-static uint16_t setIrradMeas(char *buf, struct profile *profile) {
-    return ERR_NONE;
-}
 
 /** Outbound Message Processing. */
-void processResult(uint16_t msgId, struct result *result) {
+static void processVoltageResult(uint32_t sampleId, float data) {
+    uint32_t value = data * 1000;
+
+    /* CAN. */
+    char dataPack[4];
+    memcpy(dataPack, &value, 4);
+    canPort.write(CANMessage(CRVTRCR_VOLT_MEAS, dataPack, 4));
+
+    /* Debugging. */
+    printf(
+        "%02x%04x%8x",
+        PRELUDE,
+        CRVTRCR_CURR_MEAS,
+        value
+    );
+
+    /* PC output. */
+    processResult(CRVTRCR_RESULT, measurementType::VOLTAGE, sampleId, value);
+}
+static void processCurrentResult(uint32_t sampleId, float data) {
+    uint32_t value = data * 1000;
+
+    /* CAN. */
+    char dataPack[4];
+    memcpy(dataPack, &value, 4);
+    canPort.write(CANMessage(CRVTRCR_CURR_MEAS, dataPack, 4));
+
+    /* Debugging. */
+    printf(
+        "%02x%04x%8x",
+        PRELUDE,
+        CRVTRCR_CURR_MEAS,
+        value
+    );
+
+    /* PC output. */
+    processResult(CRVTRCR_RESULT, measurementType::CURRENT, sampleId, value);
+}
+static void processResult(uint16_t msgId, enum measurementType mType, uint32_t sampleId, uint32_t value) {
     printf(
         "%02x%03x%01x%03x%05x",
         PRELUDE,
         msgId,
-        result->sensorType,
-        result->sampleId,
-        (uint32_t)(result->value * 1000)
+        mType,
+        sampleId,
+        (uint32_t) value
     );
-    result->isProcessed = true;
 }
-void processError(uint16_t msgId, uint16_t errorCode, uint16_t errorContext) {
+static void processError(uint16_t msgId, uint16_t errorCode, uint16_t errorContext) {
     printf(
         "%02x%03x%03x%04x", 
         PRELUDE,
