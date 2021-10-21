@@ -45,7 +45,7 @@
 // #define UART2_TX D5
 // #define UART2_RX D4
 #define CAN_TX D2
-#define CAN_RX D9 /* Errata. Should be D10. */
+#define CAN_RX D10 /* Errata. Should be D10 but is D9 on the board. */
 #define ADC_CURRENT A6
 #define ADC_VOLTAGE A0
 #define DAC_CONTROL A3

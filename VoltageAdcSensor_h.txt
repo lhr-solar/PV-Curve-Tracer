@@ -10,23 +10,32 @@
 
 /** Includes. */
 #include <Sensor/Sensor.hpp>
-
+#include <Filter/EmaFilter.h>
 
 class VoltageAdcSensor : public Sensor {
     private:
         AnalogIn * sensorVoltage;
+        EmaFilter filter;
 
     public:
         VoltageAdcSensor(AnalogIn *sensor) : Sensor() {
             sensorVoltage = sensor;
+            filter = EmaFilter();
+        }
+
+        VoltageAdcSensor(AnalogIn *sensor, EventQueue *queue, void (*processFnc)(float data)) : Sensor(queue, processFnc) {
+            sensorVoltage = sensor;
+            filter = EmaFilter();
         }
     
     private:
         virtual void _sampleData(void) {
             float tempSensorVoltage = *sensorVoltage;
+            printf("VoltageP: %i\n", (int)tempSensorVoltage);
 
             /* TODO: calibration here. */
+            filter.addSample(tempSensorVoltage);
             
-            data = tempSensorVoltage;
+            data = filter.getResult();
         }
 };
